@@ -39,8 +39,12 @@ def testing(vocab, all_postags, prob_all_transition, prob_all_emission):
                 trellis.append({})
                 backtrace.append({})
                 cur_word = line_separated[0]
+                words_to_print.append(cur_word)
                 if cur_word not in vocab:
-                    cur_word = "<unseen>"
+                    if cur_position == 1 or cur_word[0].isupper():
+                        cur_word = "<name>"
+                    else:
+                        cur_word = "<unseen>"
                 if cur_position == 1:
                     for each_tag in all_postags:
                         transition = (each_tag, '<s>')
@@ -75,7 +79,7 @@ def testing(vocab, all_postags, prob_all_transition, prob_all_emission):
                         # store backtrace as dict {next_tag: prev_tag}
                         backtrace[cur_position][each_cur_tag] = best_prev_tag
 
-                words_to_print.append(cur_word)
+
                 lang_to_print.append(line_separated[1])
                 prev_position = cur_position
             # If the line is the end of the sentence
@@ -122,7 +126,7 @@ def training():
     count_emission = {}
     vocab = []
     # First read the corpus and build the count of bigram and emission
-    with open("dataset/train.conll", encoding="utf8") as f:
+    with open("train.conll", encoding="utf8") as f:
         line = f.readline()
         pos_prev = '<s>'
 
@@ -135,6 +139,11 @@ def training():
             if line != "\n":
                 line_separated = line.split()
                 pos_cur = line_separated[len(line_separated) - 1]
+                if pos_cur == 'PROPN':
+                    if "<name>" not in count_emission:
+                        count_emission[("<name>", 'PROPN')] = 1
+                    else:
+                        count_emission[("<name>", 'PROPN')] += 1
                 bigram = (pos_cur, pos_prev)
 
                 if bigram in count_bigrams:
