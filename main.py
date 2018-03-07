@@ -12,7 +12,7 @@ def main():
     except OSError:
         pass
     vocab, all_postags, prob_all_transition, prob_all_emission = training()
-    dev(vocab, all_postags, prob_all_transition, prob_all_emission)
+    #dev(vocab, all_postags, prob_all_transition, prob_all_emission)
     testing(vocab, all_postags, prob_all_transition, prob_all_emission)
 
 
@@ -36,6 +36,7 @@ def testing(vocab, all_postags, prob_all_transition, prob_all_emission):
             cur_position = prev_position + 1
             # If the line is not at the end of the sentence
             if line != "\n":
+
                 line_separated = line.split()
                 trellis.append({})
                 backtrace.append({})
@@ -64,8 +65,8 @@ def testing(vocab, all_postags, prob_all_transition, prob_all_emission):
                         best_prev_tag = ''
                         emission = (cur_word, each_cur_tag)
                         prob_emission = prob_all_emission.get(emission, 0.0)
-                        # if prob_emission == 0:
-                        #     prob_emission = prob_all_emission[('<unseen>', each_tag)]
+                        if cur_word == "<unseen>" and each_cur_tag == 'NOUN':
+                            prob_emission = 0.5
                         for each_prev_tag in all_postags:
                             transition = (each_cur_tag, each_prev_tag)
                             prob_transition = prob_all_transition.get(transition, 0.0)
@@ -123,7 +124,12 @@ def testing(vocab, all_postags, prob_all_transition, prob_all_emission):
 def dev(vocab, all_postags, prob_all_transition, prob_all_emission):
     # Now start reading testing set
     print("Now dev-ing...")
-
+    try:
+        os.remove("devout.txt")
+    except OSError:
+        pass
+    total_word = 0
+    wrong_tag = 0
     with open("dev.conll", encoding="utf8") as f:
         #initialization
         words_to_print = []
@@ -141,6 +147,7 @@ def dev(vocab, all_postags, prob_all_transition, prob_all_emission):
             cur_position = prev_position + 1
             # If the line is not at the end of the sentence
             if line != "\n":
+                total_word += 1
                 line_separated = line.split()
                 trellis.append({})
                 backtrace.append({})
@@ -148,21 +155,21 @@ def dev(vocab, all_postags, prob_all_transition, prob_all_emission):
 
                 words_to_print.append(cur_word)
                 if cur_word not in vocab:
-                    if cur_position == 1 or cur_word[0].isupper():
+                    if cur_word[0].isupper():
                         cur_word = "<name>"
                     else:
                         #print(cur_word)
                         cur_word = "<unseen>"
+
                 if cur_position == 1:
                     for each_tag in all_postags:
                         transition = (each_tag, '<s>')
                         prob_transition = prob_all_transition.get(transition, 0.0)
-                        # if prob_transition == 0:
-                        #     prob_transition = prob_all_transition[('<unseen>', each_tag)]
                         emission = (cur_word, each_tag)
                         prob_emission = prob_all_emission.get(emission, 0.0)
-                        # if prob_emission == 0:
-                        #     prob_emission = prob_all_emission[('<unseen>', each_tag)]
+                        if cur_word == "<unseen>" and each_tag == 'NOUN':
+                            prob_emission = 1.0
+
                         trellis[cur_position][each_tag] = prob_emission * prob_transition
                         backtrace[cur_position][each_tag] = '<s>'
                 else:
@@ -171,13 +178,12 @@ def dev(vocab, all_postags, prob_all_transition, prob_all_emission):
                         best_prev_tag = ''
                         emission = (cur_word, each_cur_tag)
                         prob_emission = prob_all_emission.get(emission, 0.0)
-                        # if prob_emission == 0:
-                        #     prob_emission = prob_all_emission[('<unseen>', each_tag)]
+                        if cur_word == "<unseen>" and each_cur_tag == 'NOUN':
+                            prob_emission = 0.01
+
                         for each_prev_tag in all_postags:
                             transition = (each_cur_tag, each_prev_tag)
                             prob_transition = prob_all_transition.get(transition, 0.0)
-                            # if prob_transition == 0:
-                            #     prob_transition = prob_all_transition[('<unseen>', each_tag)]
                             prev_prob = trellis[prev_position][each_prev_tag]
                             cur_prob = prev_prob * prob_emission * prob_transition
                             if cur_prob > best_prob:
@@ -213,9 +219,10 @@ def dev(vocab, all_postags, prob_all_transition, prob_all_emission):
                     tag_to_print.insert(0, prev_tag)
                     cur_tag = prev_tag
 
-                with open("dev.txt", 'a+') as fout:
+                with open("devout.txt", 'a+') as fout:
                     for i in range(0, len(tag_to_print)):
                         if right_tag[i] != tag_to_print[i]:
+                            wrong_tag += 1
                             fout.write(words_to_print[i] + '\t' + lang_to_print[i] + '\t' + right_tag[i] + '\t' + tag_to_print[i] + '\n')
                     #fout.write(line)
                 words_to_print = []
@@ -229,6 +236,7 @@ def dev(vocab, all_postags, prob_all_transition, prob_all_emission):
                 trellis.append({})
                 backtrace.append({})
             line = f.readline()
+    print(float(total_word - wrong_tag)/total_word)
 
 def training():
     count_tags = {}
@@ -251,9 +259,7 @@ def training():
                 pos_cur = line_separated[len(line_separated) - 1]
                 if pos_cur == 'PROPN':
                     if "<name>" not in count_emission:
-                        count_emission[("<name>", 'PROPN')] = 1
-                    else:
-                        count_emission[("<name>", 'PROPN')] += 1
+                        count_emission[("<name>", 'PROPN')] = 1.0
                 bigram = (pos_cur, pos_prev)
 
                 if bigram in count_bigrams:
@@ -313,6 +319,7 @@ def training():
         count_posttag = count_tags.get(each_postag, 0)
         prob_all_emission[('<unseen>', each_postag)] = 1.0/(count_all_postag + count_posttag)
         prob_all_transition[('<unseen>', each_postag)] = 1.0/(count_all_postag + count_posttag)
+    # prob_all_emission[('<unseen>', 'NOUN')] = 0.5
     return vocab, list(count_tags.keys()), prob_all_transition, prob_all_emission
 
 main()
